@@ -1,0 +1,21 @@
+# Local/production compose. Supabase is a hosted free-tier service, so only
+# the agent itself runs here. Add an `ngrok` sidecar in dev if you need a
+# public URL for Twilio webhooks.
+services:
+  voice-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=8).raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
