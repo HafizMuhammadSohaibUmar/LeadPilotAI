@@ -213,6 +213,7 @@ async def media_stream(websocket: WebSocket, call_sid: str):
                 session.stream_sid = event["start"]["streamSid"]
                 if session.reconnecting_for_say:
                     session.reconnecting_for_say = False
+                    session.touch()
                 else:
                     # Speak the greeting as soon as the first stream opens.
                     await turn_queue.put("__CALL_START__")
