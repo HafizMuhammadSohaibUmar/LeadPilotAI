@@ -18,7 +18,7 @@ from integrations.llm_client import (
 
 PRIMARY = "groq/llama-3.3-70b-versatile"
 FALLBACK = "mistral/mistral-small-latest"
-TERTIARY = "mistral/open-ministral-3b"
+TERTIARY = "mistral/ministral-3b-latest"
 
 MESSAGES = [{"role": "user", "content": "classify this"}]
 

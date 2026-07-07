@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     mistral_api_key: str = ""
     llm_primary: str = "groq/llama-3.3-70b-versatile"
     llm_fallback: str = "mistral/mistral-small-latest"
-    llm_tertiary: str = "mistral/open-ministral-3b"
+    llm_tertiary: str = "mistral/ministral-3b-latest"
     llm_timeout_seconds: float = 3.0
     # Groq free tier for llama-3.3-70b-versatile: 30 req/min, 1000 req/day.
     groq_daily_request_cap: int = 1000

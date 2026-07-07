@@ -10,6 +10,7 @@ FastAPI entrypoint:
 import asyncio
 import base64
 from html import escape
+from xml.sax.saxutils import escape as xml_escape
 import json
 import logging
 import time
@@ -102,6 +103,7 @@ class CallSession:
         self.silence_prompted = False
         self.last_activity = time.time()
         self.processing = False  # guard against overlapping turns
+        self.reconnecting_for_say = False
         self.state: CallState = {
             "business_id": settings.business_id,
             "call_id": call_sid,
@@ -209,8 +211,11 @@ async def media_stream(websocket: WebSocket, call_sid: str):
             kind = event.get("event")
             if kind == "start":
                 session.stream_sid = event["start"]["streamSid"]
-                # Speak the greeting as soon as the stream opens.
-                await turn_queue.put("__CALL_START__")
+                if session.reconnecting_for_say:
+                    session.reconnecting_for_say = False
+                else:
+                    # Speak the greeting as soon as the first stream opens.
+                    await turn_queue.put("__CALL_START__")
             elif kind == "media":
                 audio = base64.b64decode(event["media"]["payload"])
                 await session.transcriber.send_audio(audio)
@@ -225,7 +230,8 @@ async def media_stream(websocket: WebSocket, call_sid: str):
         turn_task.cancel()
         watchdog_task.cancel()
         await session.transcriber.close()
-        await _finalize_if_incomplete(session)
+        if not session.reconnecting_for_say:
+            await _finalize_if_incomplete(session)
 
 
 async def _turn_loop(session: CallSession, queue: asyncio.Queue) -> None:
@@ -296,12 +302,13 @@ async def _redirect_to_say(session: CallSession, text: str) -> None:
     import httpx
     settings = get_settings()
     twiml = (
-        f"<Response><Say voice=\"Polly.Joanna\">{text}</Say>"
+        f"<Response><Say voice=\"Polly.Joanna\">{xml_escape(text)}</Say>"
         f"<Connect><Stream url=\""
         f"{settings.public_base_url.replace('https://', 'wss://').replace('http://', 'ws://')}"
         f"/media-stream/{session.call_sid}\"/></Connect></Response>"
     )
     try:
+        session.reconnecting_for_say = True
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{twilio_client.api_base}/Calls/{session.call_sid}.json",
@@ -310,6 +317,7 @@ async def _redirect_to_say(session: CallSession, text: str) -> None:
             )
             resp.raise_for_status()
     except Exception as exc:
+        session.reconnecting_for_say = False
         log_event(logger, f"<Say> fallback failed: {exc}",
                   call_id=session.call_sid, action="say_fallback_failed",
                   level=logging.ERROR)

@@ -118,7 +118,7 @@ def test_health_all_up():
     llm_ok = {
         "groq/llama-3.3-70b-versatile": {"ok": True, "latency_ms": 100},
         "mistral/mistral-small-latest": {"ok": True, "latency_ms": 150},
-        "mistral/open-ministral-3b": {"ok": True, "latency_ms": 120},
+        "mistral/ministral-3b-latest": {"ok": True, "latency_ms": 120},
     }
     with patch.object(main.llm_client, "health_check",
                       new=AsyncMock(return_value=llm_ok)), \

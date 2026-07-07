@@ -44,7 +44,7 @@ companies. Multi-tenant from day one.
                         │ │  greeting       │   LiteLLM fallback chain:        │
                         │ │  service id     │   1. groq/llama-3.3-70b          │
                         │ │  urgency        ├──►2. mistral/mistral-small       │
-                        │ │  location       │   3. mistral/open-ministral-3b   │
+                        │ │  location       │   3. mistral/ministral-3b-latest │
                         │ │  contact        │   (3s timeout / 429 / 5xx hop;   │
                         │ │  routing ──┐    │    all fail → voicemail TwiML)   │
                         │ └────────────┼────┘                                  │
@@ -172,7 +172,7 @@ If you prefer a Droplet instead of App Platform, keep the same container image, 
 |------|-------|--------------------|
 | 1 | `groq/llama-3.3-70b-versatile` | >3 s timeout, HTTP 429/5xx, daily cap |
 | 2 | `mistral/mistral-small-latest` | >3 s timeout, HTTP 429/5xx |
-| 3 | `mistral/open-ministral-3b` | >3 s timeout, HTTP 429/5xx |
+| 3 | `mistral/ministral-3b-latest` | >3 s timeout, HTTP 429/5xx |
 | — | all failed | voicemail degradation |
 
 The provider that actually served each turn is logged and stored per call as

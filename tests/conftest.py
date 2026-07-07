@@ -17,6 +17,7 @@ os.environ.update({
     "USE_ELEVENLABS_TTS": "false",
     "GROQ_API_KEY": "gsk_test",
     "MISTRAL_API_KEY": "mistral_test",
+    "LLM_TERTIARY": "mistral/ministral-3b-latest",
     "SUPABASE_URL": "https://test.supabase.co",
     "SUPABASE_KEY": "sb_test",
     "FSM_PROVIDER": "generic",
