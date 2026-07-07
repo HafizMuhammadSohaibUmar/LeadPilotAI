@@ -1,6 +1,7 @@
 """Inbound AI voice agent for home service businesses.
 
 FastAPI entrypoint:
+    GET  /             — branded static landing page for humans
   POST /voice          — Twilio inbound-call webhook (returns Media Stream TwiML)
   WS   /media-stream/{call_sid} — bidirectional Twilio <-> Deepgram/LLM/TTS loop
   POST /call-status    — Twilio call-status callback (final duration bookkeeping)
@@ -8,13 +9,17 @@ FastAPI entrypoint:
 """
 import asyncio
 import base64
+from html import escape
 import json
 import logging
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Dict, Optional
 
 from fastapi import Depends, FastAPI, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
 from middleware import Timer, log_event, setup_logging, validate_twilio_request
@@ -29,6 +34,9 @@ from integrations.twilio_client import twilio_client
 from models.call import CallOutcome, CallRecord
 
 logger = logging.getLogger("main")
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+DECISIONS_PATH = BASE_DIR / "DECISIONS.md"
 
 # Live call registry: call_sid -> CallSession (single-worker deployment).
 active_sessions: Dict[str, "CallSession"] = {}
@@ -43,6 +51,40 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Home Services Voice Agent", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+def _normalize_phone_for_tel(phone_number: str) -> str:
+    return "".join(ch for ch in phone_number if ch.isdigit() or ch == "+")
+
+
+def _render_landing_page() -> str:
+    settings = get_settings()
+    template = (STATIC_DIR / "landing.html").read_text(encoding="utf-8")
+    phone_number = settings.twilio_phone_number.strip() or "Set TWILIO_PHONE_NUMBER"
+    phone_link = _normalize_phone_for_tel(phone_number)
+    substitutions = {
+        "BUSINESS_NAME": escape(settings.business_name),
+        "PHONE_NUMBER": escape(phone_number),
+        "PHONE_LINK": escape(phone_link, quote=True),
+        "PUBLIC_BASE_URL": escape(settings.public_base_url, quote=True),
+        "GITHUB_URL": "https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI",
+        "DECISIONS_URL": "/DECISIONS.md",
+        "CURRENT_YEAR": str(time.gmtime().tm_year),
+    }
+    for key, value in substitutions.items():
+        template = template.replace(f"{{{{{key}}}}}", value)
+    return template
+
+
+@app.get("/", include_in_schema=False)
+async def landing_page():
+    return HTMLResponse(_render_landing_page())
+
+
+@app.get("/DECISIONS.md", include_in_schema=False)
+async def decisions_md():
+    return PlainTextResponse(DECISIONS_PATH.read_text(encoding="utf-8"), media_type="text/markdown")
 
 
 # ---------------------------------------------------------------------------

@@ -108,6 +108,10 @@ ngrok http 8000             # put the https URL in PUBLIC_BASE_URL
 # 5. Point your Twilio number's Voice webhook to:
 #    https://<your-domain>/voice        (HTTP POST)
 #    and its status callback to /call-status
+
+# 6. Open the browser landing page at:
+#    https://<your-domain>/
+#    This is the human-facing demo page; the webhooks stay separate.
 ```
 
 ### Run the tests
@@ -144,6 +148,23 @@ signature validation runs for real inside the webhook tests.
    (numbers quoted elsewhere refer to a smaller Groq model). The counter warns
    in the logs at 80% (800 requests) and skips the Groq tier entirely once the
    cap is spent, so the Mistral fallback path is exercised for real.
+
+## DigitalOcean deployment
+
+Recommended path: deploy the Docker image as a single service on DigitalOcean App Platform, then point your custom domain at it.
+
+1. Push this repository to GitHub and confirm the default branch is up to date.
+2. In DigitalOcean, create a new App from GitHub and select this repository.
+3. Choose the Dockerfile-based build path so DO uses the existing container setup.
+4. Set the app to a single instance and keep autoscaling off for now; this codebase assumes one worker process.
+5. Add all required environment variables in the DO dashboard, including `PUBLIC_BASE_URL`, Twilio, Deepgram, ElevenLabs, LLM, and Supabase credentials.
+6. Deploy the app and wait for the health check to pass.
+7. Attach your custom domain `leadpilotai.sohaib.systems` in DO so HTTPS is provisioned automatically.
+8. Update your Twilio number to use `https://leadpilotai.sohaib.systems/voice` for the Voice webhook and `https://leadpilotai.sohaib.systems/call-status` for the status callback.
+9. Visit `https://leadpilotai.sohaib.systems/` in a browser and confirm the landing page shows the demo number, scenarios, architecture diagram, and repository links.
+10. Call the demo number from a real phone and verify the live call flow, SMS escalation path, and `/health` endpoint all work.
+
+If you prefer a Droplet instead of App Platform, keep the same container image, run it behind a TLS reverse proxy, and still expose the same four public routes: `/`, `/voice`, `/call-status`, `/media-stream/{call_sid}`, plus `/health`.
 
 ## LLM fallback chain
 
@@ -193,6 +214,8 @@ infra bill here).
 
 ```
 ├── main.py                     # FastAPI app, webhooks, media-stream WS loop
+├── static/                     # landing page + architecture SVG
+├── DECISIONS.md                # architectural notes and deployment choices
 ├── agent/
 │   ├── graph.py                # LangGraph wiring
 │   ├── nodes.py                # the 10 nodes + routers

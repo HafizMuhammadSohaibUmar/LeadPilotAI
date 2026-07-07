@@ -9,13 +9,39 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
+from config import Settings
 import main
 from main import app
 
 client = TestClient(app)
 
+ROOT_URL = "http://testserver/"
 VOICE_URL = "http://testserver/voice"
 STATUS_URL = "http://testserver/call-status"
+
+
+# ---------------------------------------------------------------------------
+# /
+# ---------------------------------------------------------------------------
+def test_root_landing_page_uses_branding_and_links():
+    settings = Settings(
+        business_name="LeadPilot AI",
+        twilio_phone_number="+15551234567",
+        public_base_url="https://leadpilotai.sohaib.systems",
+    )
+    with patch.object(main, "get_settings", return_value=settings):
+        resp = client.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "LeadPilot AI" in resp.text
+    assert "+15551234567" in resp.text
+    assert "/static/architecture.svg" in resp.text
+    assert "https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI" in resp.text
+    assert "/DECISIONS.md" in resp.text
+
+    decisions = client.get("/DECISIONS.md")
+    assert decisions.status_code == 200
+    assert "LeadPilot AI Decisions" in decisions.text
 
 
 # ---------------------------------------------------------------------------
