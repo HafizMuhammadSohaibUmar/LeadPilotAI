@@ -68,8 +68,8 @@ class Settings(BaseSettings):
     referral_business_phone: str = ""
 
     # --- Conversation timeouts ---
-    silence_prompt_seconds: float = 8.0   # prompt caller once after 8s silence
-    silence_hangup_seconds: float = 5.0   # end call 5s after the prompt
+    silence_prompt_seconds: float = 10.0  # prompt caller once after 10s silence
+    silence_hangup_seconds: float = 7.0   # end call 7s after the prompt
 
     # --- Duplicate detection ---
     duplicate_window_minutes: int = 60

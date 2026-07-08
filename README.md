@@ -1,240 +1,211 @@
-# Inbound AI Voice Agent for Home Service Businesses
+# LeadPilot AI Voice Agent
 
-A production-ready, fully **self-hosted** inbound voice agent that answers a
-business's phone line, qualifies the caller (service type, urgency, location,
-contact), and turns the call into an actionable lead — escalating emergencies
-to the owner by SMS in real time.
+Inbound AI voice agent for home-service lead qualification.
 
-Built for HVAC, roofing, plumbing, electrical, pest control, and garage door
-companies. Multi-tenant from day one.
+LeadPilot AI answers a business phone line, qualifies the caller, detects emergencies, creates or routes the lead, and logs the call outcome. It is built as a self-hosted FastAPI service using Twilio Media Streams, Deepgram streaming transcription, LangGraph, LiteLLM, Supabase, and optional FSM integrations.
 
-> **Why no Vapi / Bland / Retell / OpenAI Realtime API?**
-> This build intentionally avoids all paid voice-orchestration platforms and
-> the OpenAI Realtime API so it can run **fully self-funded on free tiers**
-> (Deepgram 100 STT hours/mo, Groq + Mistral free LLM tiers, Supabase free
-> tier). Twilio is used strictly as raw telephony (Programmable Voice +
-> Media Streams). Every layer — STT, reasoning, TTS, orchestration — is code
-> you own, which also means no per-minute platform margin when you deploy it
-> for a paying client.
+## Live Demo
 
----
+- Live page: `https://leadpilotai.sohaib.systems/`
+- Health check: `https://leadpilotai.sohaib.systems/health`
+- Repository: `https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI`
+
+Budget testing note: if the Twilio account is on trial, only verified caller numbers can complete live calls. The application still runs the real Twilio webhook and media-stream flow; unrestricted public calling requires upgrading Twilio.
+
+## LeadPilot AI Agent Suite
+
+This repository is the first service in a connected home-service AI automation suite.
+
+| # | Agent | Purpose | Status | Link |
+| --- | --- | --- | --- | --- |
+| 1 | LeadPilot AI Voice Agent | Answers inbound calls, qualifies leads, escalates emergencies, and logs outcomes. | Live | [Repo](https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI) |
+| 2 | Missed Call Text-Back Agent | Sends fast SMS replies after missed calls and qualifies the conversation into a lead. | Planned | Repo to be published |
+| 3 | Outbound Follow-Up Agent | Runs estimate, no-show, re-engagement, and seasonal follow-up campaigns. | Planned | Repo to be published |
+| 4 | AI Review Request Agent | Sends review or feedback requests after completed jobs based on sentiment routing. | Planned | Repo to be published |
+| 5 | Web Chat Lead Qualifier | Embeddable RAG chat widget for contractor websites. | Planned | Repo to be published |
+
+Each agent is designed to be independently runnable, with its own README, `DECISIONS.md`, tests, Docker deployment, and demo path. Shared ideas are reused, but each service stays deployable on its own.
+
+## What This Agent Does
+
+- Answers an inbound Twilio call.
+- Opens a bidirectional Media Stream to FastAPI.
+- Sends raw mulaw 8 kHz audio to Deepgram.
+- Receives final caller utterances.
+- Runs one LangGraph turn per utterance.
+- Extracts caller name, service type, urgency, address/ZIP, and callback number.
+- Detects emergency keywords from any state.
+- Creates a lead, escalates an emergency, skips duplicates, or declines out-of-area callers.
+- Persists call summary and transcript to Supabase.
+- Sends SMS notifications through Twilio.
+- Uses ElevenLabs TTS when enabled, otherwise falls back to Twilio `<Say>`.
 
 ## Architecture
 
-```
-                        ┌──────────────────────────────────────────────────────┐
-                        │                    FastAPI (Uvicorn)                 │
-  Caller                │                                                      │
-    │  PSTN             │  POST /voice ────────► TwiML <Connect><Stream>       │
-    ▼                   │  POST /call-status ──► duration bookkeeping          │
-┌─────────┐  webhook    │  GET  /health ───────► LLM x3 / DB / Twilio checks   │
-│ Twilio  ├────────────►│                                                      │
-│ Voice + │  WebSocket  │  WS /media-stream/{call_sid}                         │
-│ Media   │◄───────────►│   │                                                  │
-│ Streams │  mulaw 8kHz │   │ audio in            audio out (ulaw_8000)        │
-└────┬────┘             │   ▼                        ▲                         │
-     │ SMS              │ ┌──────────┐          ┌────┴─────────┐               │
-     ▼                  │ │ Deepgram │          │ ElevenLabs   │               │
- Owner's phone          │ │ live STT │          │ Flash TTS    │               │
- (emergencies,          │ └────┬─────┘          │ (or Twilio   │               │
-  lead summaries)       │      │ final          │  <Say> $0    │               │
-                        │      ▼ utterance      │  fallback)   │               │
-                        │ ┌─────────────────┐   └──────────────┘               │
-                        │ │ LangGraph FSM   │                                  │
-                        │ │  greeting       │   LiteLLM fallback chain:        │
-                        │ │  service id     │   1. groq/llama-3.3-70b          │
-                        │ │  urgency        ├──►2. mistral/mistral-small       │
-                        │ │  location       │   3. mistral/ministral-3b-latest │
-                        │ │  contact        │   (3s timeout / 429 / 5xx hop;   │
-                        │ │  routing ──┐    │    all fail → voicemail TwiML)   │
-                        │ └────────────┼────┘                                  │
-                        │   ┌──────────┼──────────────┐                        │
-                        │   ▼          ▼              ▼                        │
-                        │ emergency  lead creation  polite decline             │
-                        │ escalation (dedup 60min)  (referral opt.)            │
-                        │   └──────────┴──────────────┘                        │
-                        │              ▼                                       │
-                        │      call summary (always)                           │
-                        └──────────────┬────────────────┬──────────────────────┘
-                                       ▼                ▼
-                            ┌──────────────────┐  ┌───────────────────────┐
-                            │ Supabase (PG +   │  │ FSM: Jobber (GraphQL) │
-                            │ pgvector): calls,│  │ Housecall Pro (REST)  │
-                            │ leads, dedup     │  │ or Generic (Supabase) │
-                            └──────────────────┘  └───────────────────────┘
+```text
+Caller
+  |
+  v
+Twilio Voice
+  |
+  | POST /voice
+  v
+FastAPI returns TwiML <Connect><Stream>
+  |
+  | WS /media-stream/{call_sid}
+  v
+Deepgram streaming STT
+  |
+  v
+LangGraph qualification flow
+  |
+  +--> LiteLLM: Groq primary, Mistral fallbacks
+  +--> Supabase: calls, leads, duplicate checks
+  +--> Twilio SMS: owner and caller notifications
+  +--> FSM: Jobber, Housecall Pro, or generic local lead
+  |
+  v
+ElevenLabs TTS or Twilio <Say> fallback
 ```
 
-### Conversation state machine (LangGraph)
+## Conversation Flow
 
-One graph invocation per caller utterance. `route_turn()` is the entry router:
-it checks the **emergency keyword intercept first** (`burst pipe`, `flooding`,
-`gas leak`, `no heat`, `furnace out`, `no ac`, `no power`, `electrical fire`,
-`sparks`, `smoke`) so an emergency spoken at *any* point jumps straight to
-`emergency_escalation_node`, regardless of state.
+1. Greeting and caller name
+2. Service identification
+3. Urgency assessment
+4. Location qualification
+5. Callback number confirmation
+6. Routing decision
+7. Lead creation, emergency escalation, duplicate handling, or out-of-area decline
+8. Call summary persistence
 
-| # | Node | Purpose |
-|---|------|---------|
-| 1 | `greeting_node` | Professional greeting, ask the caller's name |
-| 2 | `service_identification_node` | Classify into 10 service categories |
-| 3 | `urgency_assessment_node` | EMERGENCY / SAME_DAY / SCHEDULED |
-| 4 | `location_qualification_node` | Address + ZIP vs. configured service area |
-| 5 | `contact_collection_node` | Confirm callback number |
-| 6 | `routing_decision_node` | Conditional edge → 7 / 8 / 9 |
-| 7 | `emergency_escalation_node` | SMS owner NOW + HIGH_PRIORITY FSM job |
-| 8 | `lead_creation_node` | Supabase + FSM lead, SMS caller + owner |
-| 9 | `polite_decline_node` | Apologize; optional configured referral |
-| 10 | `call_summary_node` | **Always** runs last; logs call + transcript |
+Emergency keywords are checked before every graph turn. If the caller says something like "gas leak," "burst pipe," "sparks," or "smoke," the graph jumps directly to emergency escalation.
 
----
+## API Surface
 
-## Quick start
+| Route | Purpose |
+| --- | --- |
+| `GET /` | Human-facing demo page |
+| `POST /voice` | Twilio inbound voice webhook |
+| `WS /media-stream/{call_sid}` | Bidirectional Twilio audio stream |
+| `POST /call-status` | Twilio call status callback |
+| `GET /health` | LLM, Supabase, Twilio, and usage health |
+| `GET /DECISIONS.md` | Architecture decision record |
+
+## Tech Stack
+
+- FastAPI and Uvicorn
+- Twilio Voice, Media Streams, SMS, and RequestValidator
+- Deepgram streaming STT
+- LangGraph
+- LiteLLM with Groq and Mistral fallback
+- ElevenLabs TTS with Twilio `<Say>` fallback
+- Supabase PostgREST
+- Pydantic Settings
+- Pytest and pytest-asyncio
+- Docker and Docker Compose
+
+## Production Features
+
+- Twilio webhook signature validation
+- Structured JSON logs with call ID, graph node, action, latency, provider, and business ID
+- LLM fallback chain with daily Groq usage guard
+- Voicemail degradation if all LLM providers fail
+- TTS fallback that survives Twilio `<Say>` reconnects
+- Silence prompt and graceful hangup timers
+- Duplicate lead suppression by phone number
+- Multi-tenant `business_id` across config, rows, and logs
+- Health check across Twilio, Supabase, and all LLM tiers
+- Single-worker deployment boundary documented clearly
+
+## Local Setup
 
 ```bash
-# 1. Configure
-cp .env.example .env        # fill in your keys
-
-# 2. Create the schema (Supabase SQL editor or psql)
-#    paste migrations/001_init.sql
-
-# 3. Run
-docker compose up --build
-#    or locally:
+cp .env.example .env
 pip install -r requirements.txt
 uvicorn main:app --port 8000
-
-# 4. Expose to Twilio (dev)
-ngrok http 8000             # put the https URL in PUBLIC_BASE_URL
-
-# 5. Point your Twilio number's Voice webhook to:
-#    https://<your-domain>/voice        (HTTP POST)
-#    and its status callback to /call-status
-
-# 6. Open the browser landing page at:
-#    https://<your-domain>/
-#    This is the human-facing demo page; the webhooks stay separate.
 ```
 
-### Run the tests
+Expose the app for local Twilio testing:
+
+```bash
+ngrok http 8000
+```
+
+Then set:
+
+```env
+PUBLIC_BASE_URL=https://your-ngrok-domain
+```
+
+Configure Twilio:
+
+- Voice webhook: `https://your-domain/voice`
+- Status callback: `https://your-domain/call-status`
+
+## Database Setup
+
+Run the migration in Supabase SQL Editor:
+
+```text
+migrations/001_init.sql
+```
+
+It creates:
+
+- `calls`
+- `leads`
+- `duplicate_check`
+
+The migration also enables `pgvector` so transcript search can be added later without another extension migration.
+
+## Important Environment Variables
+
+```env
+PUBLIC_BASE_URL=
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+OWNER_PHONE_NUMBER=
+DEEPGRAM_API_KEY=
+GROQ_API_KEY=
+MISTRAL_API_KEY=
+SUPABASE_URL=
+SUPABASE_KEY=
+USE_ELEVENLABS_TTS=false
+SILENCE_PROMPT_SECONDS=10
+SILENCE_HANGUP_SECONDS=7
+```
+
+ElevenLabs API TTS can return `402 Payment Required` when the account has no API balance. For budget deployments, keep `USE_ELEVENLABS_TTS=false` and use Twilio `<Say>`.
+
+## Tests
 
 ```bash
 pytest tests/ -v
 ```
 
-All external services (Twilio REST, Supabase, LiteLLM) are mocked; the Twilio
-signature validation runs for real inside the webhook tests.
+The tests mock external APIs while exercising:
 
----
+- LangGraph routing and emergency intercepts
+- Twilio webhook signature validation
+- LLM fallback behavior
+- Health endpoint behavior
+- Duplicate and out-of-area paths
 
-## Production features
+## Deployment
 
-1. **Graceful degradation to voicemail** — if the entire LLM chain
-   (Groq → Mistral small → Ministral 3B) fails, the call is redirected to a
-   recorded-voicemail TwiML instead of dead air.
-2. **Conversation timeout** — one re-prompt after 8 s of silence, graceful
-   goodbye + hangup after 5 s more (both configurable).
-3. **`ENABLE_RECORDING`** — per-deployment dual-channel call recording toggle.
-4. **Multi-tenant** — `business_id` on every table, index, log line, and
-   config value. One codebase, N businesses.
-5. **`GET /health`** — pings all three LLM tiers, Supabase, and Twilio, and
-   reports per-dependency `latency_ms` plus the Groq daily-request count.
-6. **Twilio signature validation** — `X-Twilio-Signature` verified on every
-   webhook; forged requests get a 403.
-7. **Structured JSON logs** — every line carries `call_id`, `node`, `action`,
-   `latency_ms`, `llm_provider_used`, `business_id`.
-8. **Tested webhooks** — happy-path *and* failure-path integration tests for
-   each endpoint with Twilio/Supabase/LiteLLM mocked.
-9. **Groq daily-usage counter** — Groq's free tier for
-   `llama-3.3-70b-versatile` is **30 requests/minute and 1,000 requests/day**
-   (numbers quoted elsewhere refer to a smaller Groq model). The counter warns
-   in the logs at 80% (800 requests) and skips the Groq tier entirely once the
-   cap is spent, so the Mistral fallback path is exercised for real.
+Run as one container and one Uvicorn worker:
 
-## DigitalOcean deployment
-
-Recommended path: deploy the Docker image as a single service on DigitalOcean App Platform, then point your custom domain at it.
-
-1. Push this repository to GitHub and confirm the default branch is up to date.
-2. In DigitalOcean, create a new App from GitHub and select this repository.
-3. Choose the Dockerfile-based build path so DO uses the existing container setup.
-4. Set the app to a single instance and keep autoscaling off for now; this codebase assumes one worker process.
-5. Add all required environment variables in the DO dashboard, including `PUBLIC_BASE_URL`, Twilio, Deepgram, ElevenLabs, LLM, and Supabase credentials.
-6. Deploy the app and wait for the health check to pass.
-7. Attach your custom domain `leadpilotai.sohaib.systems` in DO so HTTPS is provisioned automatically.
-8. Update your Twilio number to use `https://leadpilotai.sohaib.systems/voice` for the Voice webhook and `https://leadpilotai.sohaib.systems/call-status` for the status callback.
-9. Visit `https://leadpilotai.sohaib.systems/` in a browser and confirm the landing page shows the demo number, scenarios, architecture diagram, and repository links.
-10. Call the demo number from a real phone and verify the live call flow, SMS escalation path, and `/health` endpoint all work.
-
-If you prefer a Droplet instead of App Platform, keep the same container image, run it behind a TLS reverse proxy, and still expose the same four public routes: `/`, `/voice`, `/call-status`, `/media-stream/{call_sid}`, plus `/health`.
-
-## LLM fallback chain
-
-| Tier | Model | Trigger to move on |
-|------|-------|--------------------|
-| 1 | `groq/llama-3.3-70b-versatile` | >3 s timeout, HTTP 429/5xx, daily cap |
-| 2 | `mistral/mistral-small-latest` | >3 s timeout, HTTP 429/5xx |
-| 3 | `mistral/ministral-3b-latest` | >3 s timeout, HTTP 429/5xx |
-| — | all failed | voicemail degradation |
-
-The provider that actually served each turn is logged and stored per call as
-`llm_provider_used`.
-
----
-
-## How this maps to a paid client deployment
-
-This repo is a reference implementation; here is exactly what changes when a
-home-service business pays you to run it:
-
-| Free-tier component | Paid deployment upgrade |
-|---------------------|-------------------------|
-| Deepgram free 100 h/mo | Deepgram pay-as-you-go (~$0.0059/min) — still ~10× cheaper than platform per-minute fees |
-| Groq/Mistral free tiers | Groq paid tier (higher rate limits) or a dedicated Mistral endpoint; the LiteLLM chain is unchanged |
-| ElevenLabs starter credits | ElevenLabs Creator/Pro, or keep `USE_ELEVENLABS_TTS=false` and ship with Twilio `<Say>` at $0 |
-| Supabase free tier | Supabase Pro ($25/mo) — needed once call volume exceeds free-row limits |
-| Single Docker container | The same container on Fly.io/Railway/ECS with `BUSINESS_ID` set per tenant; one deployment per client, or one shared deployment with per-tenant config rows |
-| `generic` FSM | Flip `FSM_PROVIDER` to `jobber` or `housecallpro` with the client's API credentials — no code changes |
-
-Typical client pricing for this category is $300–800/mo per business + setup.
-Total infrastructure cost at moderate volume (~500 calls/mo) is roughly
-$30–60/mo, which is the margin argument for self-hosting instead of building
-on Vapi/Bland/Retell (whose per-minute fees typically exceed the *entire*
-infra bill here).
-
-### Operational notes
-
-* Run **one Uvicorn worker** per deployment: the live-call registry and the
-  Groq usage counter are in-process (move both to Redis/Supabase if you ever
-  need horizontal scale).
-* `migrations/001_init.sql` enables `pgvector` so transcript embeddings /
-  semantic search over past calls can be added without another migration.
-* All prompts live in `agent/prompts.py` — tune the voice per client without
-  touching graph logic.
-
-## File structure
-
+```bash
+docker compose up --build -d
 ```
-├── main.py                     # FastAPI app, webhooks, media-stream WS loop
-├── static/                     # landing page + architecture SVG
-├── DECISIONS.md                # architectural notes and deployment choices
-├── agent/
-│   ├── graph.py                # LangGraph wiring
-│   ├── nodes.py                # the 10 nodes + routers
-│   ├── state.py                # CallState + emergency keywords
-│   └── prompts.py              # every prompt/script in one place
-├── integrations/
-│   ├── twilio_client.py        # SMS + TwiML (recording toggle, <Say> fallback)
-│   ├── deepgram_client.py      # streaming STT (mulaw 8k)
-│   ├── elevenlabs_client.py    # Flash TTS (ulaw_8000 out)
-│   ├── llm_client.py           # LiteLLM chain + Groq daily counter
-│   ├── supabase_client.py      # calls / leads / dedup (PostgREST)
-│   ├── jobber_client.py        # GraphQL FSM
-│   ├── housecallpro_client.py  # REST FSM
-│   └── fsm_service.py          # GenericFSMService + provider factory
-├── models/                     # pydantic models (call.py, fsm.py)
-├── config.py                   # pydantic-settings, all env config
-├── middleware.py               # JSON logging + Twilio signature validation
-├── migrations/001_init.sql     # calls, leads, duplicate_check (+ pgvector)
-├── tests/                      # webhooks, agent graph, LLM fallback
-├── Dockerfile / docker-compose.yml
-└── .env.example
-```
+
+One-worker note: active call sessions and the Groq usage counter are currently in memory. Move those to Redis or Supabase before horizontal scaling.
+
+## Current Demo Limitations
+
+- Twilio trial accounts only allow calls and SMS with verified numbers.
+- ElevenLabs API speech requires available account balance; Twilio `<Say>` is the budget fallback.
+- The generic FSM provider stores leads in Supabase and sends owner SMS instead of creating a real Jobber or Housecall Pro job.
+- Horizontal scaling needs external shared state for active calls.
