@@ -7,17 +7,17 @@
   <title>LeadPilot AI Voice Agent</title>
   <style>
     :root {
-      --bg: #0b0d10;
-      --panel: #11151b;
-      --panel-2: #151b23;
-      --line: #26313d;
+      --bg: #0A0908;
+      --panel: #18160E;
+      --panel-2: #201D12;
+      --line: rgba(255, 255, 255, 0.08);
       --line-soft: rgba(255, 255, 255, 0.08);
-      --text: #eef4f8;
-      --muted: #a9b7c3;
-      --soft: #788895;
-      --blue: #69a7ff;
-      --green: #4ed6a3;
-      --amber: #e7b95f;
+      --text: #F5F0E4;
+      --muted: #9A9080;
+      --soft: #7A7260;
+      --blue: #C49A1A;
+      --green: #4FB39F;
+      --amber: #DDB840;
       --red: #ff7d7d;
       --max: 1180px;
       --radius: 8px;
@@ -29,7 +29,7 @@
 
     body {
       margin: 0;
-      background: var(--bg);
+      background: radial-gradient(circle at top left, rgba(47,143,126,0.16), transparent 34%), var(--bg);
       color: var(--text);
       font-family: var(--font);
       line-height: 1.55;
@@ -44,7 +44,7 @@
 
     header {
       border-bottom: 1px solid var(--line-soft);
-      background: rgba(11, 13, 16, 0.92);
+      background: rgba(10, 9, 8, 0.92);
       position: sticky;
       top: 0;
       z-index: 5;
@@ -73,7 +73,7 @@
       border-radius: 8px;
       display: grid;
       place-items: center;
-      background: #182231;
+      background: #201D12;
       border: 1px solid var(--line);
       color: var(--blue);
       font-weight: 800;
@@ -109,7 +109,7 @@
       padding: 0 14px;
       border-radius: 8px;
       border: 1px solid var(--line);
-      background: #101720;
+      background: #111009;
       color: var(--text);
       text-decoration: none;
       font-size: 13px;
@@ -117,8 +117,9 @@
     }
 
     .btn.primary {
-      background: #1d5fd1;
-      border-color: #2d72e6;
+      background: var(--blue);
+      border-color: var(--blue);
+      color: var(--bg);
     }
 
     .hero {
@@ -337,7 +338,7 @@
     .code {
       margin-top: 12px;
       padding: 12px 14px;
-      background: #080a0d;
+      background: #0f0e09;
       border: 1px solid var(--line);
       border-radius: var(--radius);
       color: var(--muted);
@@ -557,6 +558,16 @@
         <div class="code">Routes: GET / | POST /voice | WS /media-stream/{call_sid} | POST /call-status | GET /health</div>
       </div>
     </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Safe database preview</h2>
+          <p>Sanitized Supabase activity. Phone numbers are masked; names, addresses, transcripts, and notes are not exposed.</p>
+        </div>
+        <div class="code" id="snapshot">Loading sanitized activity snapshot...</div>
+      </div>
+    </section>
   </main>
 
   <footer>
@@ -576,6 +587,12 @@
         healthLinks.forEach((link) => { link.textContent = label; });
       } catch (error) {
         healthLinks.forEach((link) => { link.textContent = 'Health'; });
+      }
+      try {
+        const response = await fetch('/demo/snapshot', { headers: { Accept: 'application/json' } });
+        document.getElementById('snapshot').textContent = JSON.stringify(await response.json(), null, 2);
+      } catch (error) {
+        document.getElementById('snapshot').textContent = 'Snapshot unavailable.';
       }
     })();
   </script>

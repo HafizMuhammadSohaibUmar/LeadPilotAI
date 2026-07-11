@@ -428,6 +428,11 @@ async def health():
     }
 
 
+@app.get("/demo/snapshot")
+async def demo_snapshot():
+    return await supabase_client.demo_snapshot()
+
+
 if __name__ == "__main__":
     import uvicorn
 

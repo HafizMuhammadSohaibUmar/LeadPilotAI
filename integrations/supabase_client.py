@@ -17,6 +17,12 @@ from models.call import CallRecord, LeadRecord
 logger = logging.getLogger("supabase")
 
 
+def _mask_phone(phone: str | None) -> str:
+    if not phone:
+        return ""
+    return f"{phone[:3]}***{phone[-4:]}" if len(phone) >= 7 else "***"
+
+
 class SupabaseClient:
     def __init__(self) -> None:
         settings = get_settings()
@@ -107,6 +113,55 @@ class SupabaseClient:
             return {"ok": True, "latency_ms": timer.latency_ms}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
+
+    async def demo_snapshot(self) -> dict:
+        calls = await self._request(
+            "GET", "calls",
+            params={
+                "business_id": f"eq.{self.business_id}",
+                "select": "caller_number,service_type,urgency,outcome,duration_seconds,created_at",
+                "order": "created_at.desc",
+                "limit": "6",
+            },
+        )
+        leads = await self._request(
+            "GET", "leads",
+            params={
+                "business_id": f"eq.{self.business_id}",
+                "select": "phone,service_type,urgency,status,created_at",
+                "order": "created_at.desc",
+                "limit": "6",
+            },
+        )
+        return {
+            "tables": {
+                "calls": {
+                    "sample": [
+                        {
+                            "phone": _mask_phone(row.get("caller_number")),
+                            "service_type": row.get("service_type"),
+                            "urgency": row.get("urgency"),
+                            "outcome": row.get("outcome"),
+                            "duration_seconds": row.get("duration_seconds"),
+                            "created_at": row.get("created_at"),
+                        }
+                        for row in calls
+                    ],
+                },
+                "leads": {
+                    "sample": [
+                        {
+                            "phone": _mask_phone(row.get("phone")),
+                            "service_type": row.get("service_type"),
+                            "urgency": row.get("urgency"),
+                            "status": row.get("status"),
+                            "created_at": row.get("created_at"),
+                        }
+                        for row in leads
+                    ],
+                },
+            }
+        }
 
 
 supabase_client = SupabaseClient()
