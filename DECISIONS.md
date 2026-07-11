@@ -16,11 +16,11 @@ Tradeoff:
 
 - Some integration patterns will be repeated in later agents. That duplication is acceptable because each service should remain independently runnable.
 
-## 2. Five-Agent Suite
+## 2. Related Service Set
 
-Decision: build a connected suite, not one oversized monolith.
+Decision: keep the home-service agents as separate deployable services, not one oversized monolith.
 
-The planned services are:
+The services are:
 
 1. LeadPilot AI Voice Agent - inbound call qualification.
 2. Missed Call Text-Back Agent - SMS recovery and lead qualification after missed calls.

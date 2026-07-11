@@ -12,19 +12,21 @@ LeadPilot AI answers a business phone line, qualifies the caller, detects emerge
 
 Budget testing note: if the Twilio account is on trial, only verified caller numbers can complete live calls. The application still runs the real Twilio webhook and media-stream flow; unrestricted public calling requires upgrading Twilio.
 
-## LeadPilot AI Agent Suite
+## Related AI Systems
 
-This repository is the first service in a connected home-service AI automation suite.
+This repository is one service in a set of independently runnable AI systems.
 
-| # | Agent | Purpose | Status | Link |
-| --- | --- | --- | --- | --- |
-| 1 | LeadPilot AI Voice Agent | Answers inbound calls, qualifies leads, escalates emergencies, and logs outcomes. | Live | [Repo](https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI) |
-| 2 | Missed Call Text-Back Agent | Sends fast SMS replies after missed calls and qualifies the conversation into a lead. | Planned | Repo to be published |
-| 3 | Outbound Follow-Up Agent | Runs estimate, no-show, re-engagement, and seasonal follow-up campaigns. | Planned | Repo to be published |
-| 4 | AI Review Request Agent | Sends review or feedback requests after completed jobs based on sentiment routing. | Planned | Repo to be published |
-| 5 | Web Chat Lead Qualifier | Embeddable RAG chat widget for contractor websites. | Planned | Repo to be published |
+| System | Purpose | Links |
+| --- | --- | --- |
+| LeadPilot AI Voice Agent | Inbound phone agent for call qualification, emergency detection, and lead logging. | [Live](https://leadpilotai.sohaib.systems/) · [Repo](https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI) |
+| Missed Call Text-Back AI Agent | SMS recovery and qualification after no-answer or busy calls. | [Live](https://missed-call-text-back-ai-agent.sohaib.systems/demo) · [Repo](https://github.com/HafizMuhammadSohaibUmar/Missed-Call-Text-Back-AI-Agent) |
+| Outbound Follow-Up AI Agent | Estimate, no-show, re-engagement, and seasonal follow-up campaigns. | [Live](https://outbound-followup-ai-agent.sohaib.systems/demo) · [Repo](https://github.com/HafizMuhammadSohaibUmar/Outbound-Follow-Up-AI-Agent) |
+| AI Auto Review Request Agent | Sentiment-aware post-job review and private feedback routing. | [Live](https://ai-review-agent.sohaib.systems/demo) · [Repo](https://github.com/HafizMuhammadSohaibUmar/AI-Auto-Review-Request-Agent) |
+| Web Chat Lead Qualifier Agent | Embeddable RAG chat widget for contractor websites. | [Live](https://web-chat-lead-qualifier-agent.sohaib.systems/demo) · [Repo](https://github.com/HafizMuhammadSohaibUmar/Web-Chat-Lead-Qualifier-Agent) |
+| Personal AI Agent | Local task, planning, and calendar assistant with LangGraph tools. | [Live](https://personal-ai-agent.sohaib.systems/) · [Repo](https://github.com/HafizMuhammadSohaibUmar/Personal-AI-Agent) |
+| Invoxia AI for ERPNext | Frappe/ERPNext assistant layer for navigation, voice input foundations, and live ERP answers. | [Live](https://invoxia.sohaib.systems/) · [Repo](https://github.com/HafizMuhammadSohaibUmar/InvoxiaAI-ERPNext) |
 
-Each agent is designed to be independently runnable, with its own README, `DECISIONS.md`, tests, Docker deployment, and demo path. Shared ideas are reused, but each service stays deployable on its own.
+Each system keeps its own repository, deployment boundary, and README. Shared patterns are reused where useful, but the services are not bundled into one monolith.
 
 ## What This Agent Does
 
