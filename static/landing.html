@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="LeadPilot AI is a live inbound voice agent demo for home-service lead qualification.">
   <title>LeadPilot AI Voice Agent</title>
+  <link rel="icon" type="image/jpeg" href="/static/sohaib-profile.jpg">
   <style>
     :root {
       --bg: #0A0908;
@@ -77,6 +78,15 @@
       border: 1px solid var(--line);
       color: var(--blue);
       font-weight: 800;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .brand strong {
@@ -347,6 +357,77 @@
       overflow-x: auto;
     }
 
+    .architecture-map {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012)), var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .arch-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .arch-node {
+      min-height: 128px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111009;
+      position: relative;
+    }
+
+    .arch-node::after {
+      content: attr(data-step);
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      color: rgba(245,240,228,0.24);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .arch-node.core {
+      background: linear-gradient(135deg, rgba(79,179,159,0.15), rgba(196,154,26,0.08)), #111009;
+      border-color: rgba(79,179,159,0.28);
+    }
+
+    .arch-node h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .arch-node p {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .arch-note {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(79,179,159,0.10);
+      border: 1px solid rgba(79,179,159,0.22);
+      color: var(--green);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
     .table-wrap {
       overflow-x: auto;
       margin-top: 12px;
@@ -392,16 +473,43 @@
       font-size: 13px;
     }
 
-    footer .wrap {
+    .footer-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .footer-brand a {
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .footer-brand span { color: var(--blue); }
+    .footer-brand p, .footer-col a, .footer-bottom { color: var(--muted); font-size: 14px; }
+    .footer-col h4 { margin: 0 0 8px; color: var(--text); }
+    .footer-links-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+    .footer-links-list a { text-decoration: none; }
+
+    .footer-bottom {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
       flex-wrap: wrap;
+      border-top: 1px solid var(--line-soft);
+      padding-top: 16px;
     }
+
+    .footer-bottom-links { display: flex; gap: 12px; flex-wrap: wrap; }
+    .footer-bottom a { color: var(--text); text-decoration: none; }
 
     @media (max-width: 980px) {
       .hero, .grid, .flow { grid-template-columns: 1fr; }
+      .arch-row { grid-template-columns: 1fr 1fr; }
+      .footer-top { grid-template-columns: 1fr; }
       .section-head { align-items: flex-start; flex-direction: column; }
     }
 
@@ -413,6 +521,7 @@
       .hero { padding-top: 42px; }
       .hero-actions { flex-direction: column; }
       h1 { max-width: 12ch; }
+      .arch-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -420,13 +529,14 @@
   <header>
     <div class="wrap nav">
       <a class="brand" href="#top">
-        <span class="mark">LP</span>
+        <span class="mark"><img src="/static/sohaib-profile.jpg" alt="Hafiz Muhammad Sohaib Umar"></span>
         <span>
           <strong>LeadPilot AI Voice Agent</strong>
-          <span>{{BUSINESS_NAME}}</span>
+          <span>sohaib.systems</span>
         </span>
       </a>
       <nav class="links" aria-label="Project links">
+        <a class="btn" href="https://sohaib.systems/" target="_blank" rel="noreferrer">sohaib.systems</a>
         <a class="btn" href="{{GITHUB_URL}}" target="_blank" rel="noreferrer">GitHub</a>
         <a class="btn" href="{{DECISIONS_URL}}">Decisions</a>
         <a class="btn" href="{{PUBLIC_BASE_URL}}/health">Health</a>
@@ -452,7 +562,7 @@
         <div class="label">Demo number</div>
         <a class="phone" href="tel:{{PHONE_LINK}}">{{PHONE_NUMBER}}</a>
         <p class="notice">
-          Budget demo mode: if this Twilio account is still on trial, only verified caller numbers can complete calls. Upgrade Twilio for unrestricted public call testing.
+          This page connects to the live Twilio voice flow. If the phone account is in trial mode, Twilio may only allow calls from verified numbers; the backend, health checks, and call-state flow remain testable.
         </p>
         <div class="status">
           <div class="row"><span>Voice pipeline</span><strong class="ok">Live</strong></div>
@@ -547,9 +657,9 @@
           <article class="card">
             <h3>Demo clarity</h3>
             <ul>
-              <li>Honest Twilio trial limitation</li>
-              <li>Decision log for architecture choices</li>
-              <li>Tests for graph, webhooks, and LLM fallback</li>
+              <li>Clear testing paths for routine, emergency, and out-of-area calls</li>
+              <li>Decision log explaining architecture and cost choices</li>
+              <li>Tests for graph routing, webhooks, and LLM fallback behavior</li>
             </ul>
           </article>
         </div>
@@ -587,10 +697,53 @@
       <div class="wrap">
         <div class="section-head">
           <h2>Architecture</h2>
-          <p>A compact view of how Twilio, Deepgram, LangGraph, LiteLLM, Supabase, and FSM integrations work together.</p>
+          <p>The production flow keeps telephony, speech, reasoning, persistence, and integrations separated so failures can be observed and handled without breaking the call.</p>
         </div>
-        <div class="diagram">
-          <img src="/static/architecture.svg" alt="LeadPilot AI voice agent architecture diagram">
+        <div class="architecture-map" aria-label="LeadPilot AI voice architecture">
+          <div class="arch-row">
+            <div class="arch-node" data-step="01">
+              <h3>Caller</h3>
+              <p>PSTN or mobile caller reaches the configured Twilio number.</p>
+            </div>
+            <div class="arch-node" data-step="02">
+              <h3>Twilio Voice</h3>
+              <p>Webhook returns TwiML and starts a bidirectional media stream.</p>
+            </div>
+            <div class="arch-node core" data-step="03">
+              <h3>FastAPI Session</h3>
+              <p>Owns call state, routes audio, handles status callbacks, and records outcomes.</p>
+            </div>
+            <div class="arch-node" data-step="04">
+              <h3>Deepgram STT</h3>
+              <p>Final caller utterances drive one graph transition at a time.</p>
+            </div>
+          </div>
+          <div class="arch-row">
+            <div class="arch-node core" data-step="05">
+              <h3>LangGraph FSM</h3>
+              <p>Greeting, qualification, emergency escalation, service-area handling, and lead creation.</p>
+            </div>
+            <div class="arch-node" data-step="06">
+              <h3>LiteLLM</h3>
+              <p>Groq primary with Mistral fallback for controlled response generation.</p>
+            </div>
+            <div class="arch-node" data-step="07">
+              <h3>Supabase + FSM APIs</h3>
+              <p>Calls, leads, duplicate checks, and optional Jobber or Housecall Pro handoff.</p>
+            </div>
+            <div class="arch-node" data-step="08">
+              <h3>Speech Response</h3>
+              <p>ElevenLabs Flash TTS with Twilio Say fallback when voice synthesis is unavailable.</p>
+            </div>
+          </div>
+          <div class="arch-note">
+            <span class="tag">/voice</span>
+            <span class="tag">/media-stream/{call_sid}</span>
+            <span class="tag">/call-status</span>
+            <span class="tag">/health</span>
+            <span class="tag">structured logs</span>
+            <span class="tag">Twilio signature validation</span>
+          </div>
         </div>
         <div class="code">Routes: GET / | POST /voice | WS /media-stream/{call_sid} | POST /call-status | GET /health</div>
       </div>
@@ -609,8 +762,31 @@
 
   <footer>
     <div class="wrap">
-      <span>Inbound AI voice qualification for home-service businesses.</span>
-      <span>{{CURRENT_YEAR}} - LeadPilot AI</span>
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="https://sohaib.systems/" target="_blank" rel="noreferrer">Sohaib<span>.</span></a>
+          <p>AI Solutions Engineer building practical automation systems for home-service lead capture, follow-up, and customer communication.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <ul class="footer-links-list">
+            <li><a href="{{GITHUB_URL}}" target="_blank" rel="noreferrer">GitHub Repository</a></li>
+            <li><a href="{{PUBLIC_BASE_URL}}/health" target="_blank" rel="noreferrer">Health Check</a></li>
+            <li><a href="{{DECISIONS_URL}}">Architecture Decisions</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Connect</h4>
+          <ul class="footer-links-list">
+            <li><a href="https://sohaib.systems/portfolio.html" target="_blank" rel="noreferrer">Project Portfolio</a></li>
+            <li><a href="mailto:hafizmuhammadsohaibumar@gmail.com">Email</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>{{CURRENT_YEAR}} Hafiz Muhammad Sohaib Umar</span>
+        <div class="footer-bottom-links"><a href="https://sohaib.systems/" target="_blank" rel="noreferrer">sohaib.systems</a><a href="https://github.com/HafizMuhammadSohaibUmar" target="_blank" rel="noreferrer">GitHub</a></div>
+      </div>
     </div>
   </footer>
 
