@@ -347,6 +347,43 @@
       overflow-x: auto;
     }
 
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 12px;
+      background: #0f0e09;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    table {
+      width: 100%;
+      min-width: 540px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-size: 13px;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+
+    td { color: var(--muted); }
+
+    .empty {
+      margin-top: 10px;
+      padding: 14px;
+      border: 1px dashed var(--line);
+      border-radius: var(--radius);
+      color: var(--muted);
+    }
+
     footer {
       margin-top: 28px;
       padding: 28px 0;
@@ -565,7 +602,7 @@
           <h2>Safe database preview</h2>
           <p>Sanitized Supabase activity. Phone numbers are masked; names, addresses, transcripts, and notes are not exposed.</p>
         </div>
-        <div class="code" id="snapshot">Loading sanitized activity snapshot...</div>
+        <div id="snapshot">Loading sanitized activity snapshot...</div>
       </div>
     </section>
   </main>
@@ -590,11 +627,30 @@
       }
       try {
         const response = await fetch('/demo/snapshot', { headers: { Accept: 'application/json' } });
-        document.getElementById('snapshot').textContent = JSON.stringify(await response.json(), null, 2);
+        renderSnapshot(await response.json());
       } catch (error) {
         document.getElementById('snapshot').textContent = 'Snapshot unavailable.';
       }
     })();
+
+    function renderSnapshot(data) {
+      const root = document.getElementById('snapshot');
+      const tables = data.tables || {};
+      root.innerHTML = Object.entries(tables).map(([name, table]) => {
+        const rows = table.sample || [];
+        if (!rows.length) return `<h3>${title(name)}</h3><div class="empty">No recent demo-safe rows yet.</div>`;
+        const cols = Object.keys(rows[0]);
+        return `<h3>${title(name)}</h3><div class="table-wrap"><table><thead><tr>${cols.map((col) => `<th>${title(col)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${cols.map((col) => `<td>${escapeHtml(String(row[col] ?? ''))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      }).join('');
+    }
+
+    function title(value) {
+      return value.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
   </script>
 </body>
 </html>
