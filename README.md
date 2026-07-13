@@ -10,7 +10,7 @@ LeadPilot AI answers a business phone line, qualifies the caller, detects emerge
 - Health check: `https://leadpilotai.sohaib.systems/health`
 - Repository: `https://github.com/HafizMuhammadSohaibUmar/LeadPilotAI`
 
-Budget testing note: if the Twilio account is on trial, only verified caller numbers can complete live calls. The application still runs the real Twilio webhook and media-stream flow; unrestricted public calling requires upgrading Twilio.
+Testing note: The Twilio account is on trial, only verified caller numbers can complete live calls. The application still runs the real Twilio webhook and media-stream flow; unrestricted public calling requires upgrading Twilio.
 
 ## Related AI Systems
 
