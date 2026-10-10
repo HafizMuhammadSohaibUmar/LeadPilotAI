@@ -208,3 +208,7 @@ One-worker note: active call sessions and the Groq usage counter are currently i
 - The generic FSM provider stores leads in Supabase and sends owner SMS instead of creating a real Jobber or Housecall Pro job.
 - Horizontal scaling needs external shared state for active calls.
 
+## Retell + n8n Client Deployment
+
+This repository also includes a separate inactive Retell + n8n post-call implementation for client-specific deployments. See [`n8n-retell-build/README.md`](n8n-retell-build/README.md) for workflow imports, Retell configuration, Supabase schema, suppression handling, and testing instructions. The original custom-coded LeadPilot service remains unchanged.
+

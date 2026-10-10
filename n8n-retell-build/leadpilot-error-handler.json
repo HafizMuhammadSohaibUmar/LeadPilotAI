@@ -1,0 +1,107 @@
+{
+  "id": "LpRtErr20261010A",
+  "name": "LeadPilot Retell - Error Handler",
+  "nodes": [
+    {
+      "id": "setup-notes",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "parameters": {
+        "content": "## Error workflow\nConfigure Supabase and Slack credentials, plus a real Slack channel. Save this workflow and select it under the main workflow Settings > Error workflow. Do not use the main workflow as its own handler. Retell and Twilio costs are client-billed; this error workflow has no LLM/voice cost.",
+        "width": 500,
+        "height": 250
+      },
+      "position": [
+        -160,
+        -300
+      ]
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "parameters": {},
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "log-error-supabase-",
+      "name": "Log Error (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "retell_call_errors",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "workflow_name",
+              "fieldValue": "={{ $json.workflow?.name ?? \"unknown\" }}"
+            },
+            {
+              "fieldId": "node_name",
+              "fieldValue": "={{ $json.execution?.lastNodeExecuted ?? $json.trigger?.error?.node?.name ?? \"trigger\" }}"
+            },
+            {
+              "fieldId": "error_message",
+              "fieldValue": "={{ $json.execution?.error?.message ?? $json.trigger?.error?.message ?? \"unknown error\" }}"
+            },
+            {
+              "fieldId": "execution_id",
+              "fieldValue": "={{ $json.execution?.id ?? \"\" }}"
+            }
+          ]
+        }
+      },
+      "position": [
+        220,
+        -100
+      ]
+    },
+    {
+      "id": "alert-owner-slack-",
+      "name": "Alert Owner (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "REPLACE_WITH_SLACK_CHANNEL",
+        "text": "={{ 'LeadPilot post-call failure in ' + ($json.workflow?.name ?? 'unknown') + ' at ' + ($json.execution?.lastNodeExecuted ?? 'trigger') + ': ' + ($json.execution?.error?.message ?? $json.trigger?.error?.message ?? 'unknown error') }}"
+      },
+      "position": [
+        220,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Log Error (Supabase)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert Owner (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}

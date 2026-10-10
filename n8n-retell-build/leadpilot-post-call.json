@@ -1,0 +1,868 @@
+{
+  "id": "LpRtMain20261010",
+  "name": "LeadPilot Retell - Post-call (inactive until verified)",
+  "nodes": [
+    {
+      "id": "setup-notes",
+      "name": "Setup Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "parameters": {
+        "content": "## Setup before activation\nCredentials: Twilio, Jobber OAuth2 (or client-approved Housecall Pro alternative), Supabase, Slack (in separate error workflow). Configure owner/Twilio E.164 numbers, schema.sql, and Error workflow setting. This webhook MUST have verified Retell raw-body signatures at ingress before activation.\n\nCost: Retell per-minute and Twilio telephony/SMS are billed to the client retainer, not the developer. This post-call workflow has no LLM or voice cost of its own.",
+        "width": 520,
+        "height": 320
+      },
+      "position": [
+        -240,
+        -420
+      ]
+    },
+    {
+      "id": "retell-call-end-webhook",
+      "name": "Retell Call End Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "retell-call-end",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "parse-call-data",
+      "name": "Parse Call Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const envelope = $input.first().json.body ?? $input.first().json;\n  if (envelope.event && envelope.event !== 'call_analyzed') return [];\n  const call = envelope.call ?? envelope;\n  if (!call.call_id || !call.from_number) throw new Error('Retell call_id and from_number are required');\n  const turns = Array.isArray(call.transcript_object) ? call.transcript_object : [];\n  const callerText = turns.filter(t => t.role === 'user').map(t => String(t.content ?? '')).join(' ');\n  const fullText = turns.map(t => String(t.content ?? '')).join(' ') || String(call.transcript ?? '');\n  const analysis = call.call_analysis ?? {};\n  const name = callerText.match(/\\b(?:my name is|this is|i am|i'm)\\s+([a-z]+(?:\\s+[a-z]+)?)/i);\n  const service = fullText.match(/\\b(?:air conditioning|ac repair|hvac|furnace|heating|plumbing|drain|water heater|roofing|roof repair|roof inspection|electrical|garage door|pest control|tree removal)\\b/i);\n  const address = callerText.match(/\\b\\d{1,6}\\s+[a-z0-9.\\s]{3,50}?\\s+(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd)\\b/i);\n  const outOfArea = /\\b(?:outside (?:our|the|your) service area|we do not service (?:that|your) area|out of (?:our|the) service area)\\b/i.test(fullText);\n  const emergency = !/\\b(?:not|no)\\s+(?:an?\\s+)?emergency\\b/i.test(callerText) &&\n    /\\b(?:emergency|urgent|burst pipe|flooding|gas leak|gas odor|smell gas|sparking|smoke|fire|exposed live wiring|no power|no heat|no ac|no air conditioning)\\b/i.test(callerText);\n  const urgency = outOfArea ? 'out_of_area' : emergency ? 'emergency' :\n    (!name || !service) ? 'needs_review' : 'qualified';\n  return [{ json: {\n    call_id: call.call_id, call_status: call.call_status ?? null,\n    from_number: call.from_number, to_number: call.to_number ?? null,\n    start_timestamp: call.start_timestamp ?? null, end_timestamp: call.end_timestamp ?? null,\n    summary: analysis.summary ?? '', in_voicemail: Boolean(analysis.in_voicemail),\n    caller_name: name?.[1]?.trim() ?? 'Unknown caller', service_type: service?.[0] ?? 'Service not specified',\n    address: address?.[0]?.trim() ?? null, urgency, call_outcome: urgency,\n    transcript: String(call.transcript ?? fullText),\n  } }];"
+      },
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "id": "duplicate-check-supabase-",
+      "name": "Duplicate Check (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "getAll",
+        "tableId": "retell_call_logs",
+        "returnAll": true,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "from_number",
+              "condition": "eq",
+              "keyValue": "={{ $('Parse Call Data').first().json.from_number }}"
+            },
+            {
+              "keyName": "created_at",
+              "condition": "gte",
+              "keyValue": "={{ $now.minus({ minutes: 60 }).toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "id": "decide-duplicate",
+      "name": "Decide Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const call = $('Parse Call Data').first().json;\n  const rows = $input.all().map(item => item.json).filter(item => item && item.call_id);\n  const cutoff = Date.now() - 60 * 60 * 1000;\n  const duplicate = rows.some(row => row.call_id === call.call_id ||\n    (row.from_number === call.from_number && Date.parse(row.created_at) >= cutoff));\n  return [{ json: { ...call, duplicate } }];"
+      },
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "id": "is-duplicate-",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.duplicate }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "id": "urgency-router",
+      "name": "Urgency Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 4,
+        "output": "={{ $json.urgency === 'emergency' ? 0 : ($json.urgency === 'qualified' ? 1 : ($json.urgency === 'out_of_area' ? 2 : 3)) }}",
+        "options": {}
+      },
+      "position": [
+        1100,
+        120
+      ]
+    },
+    {
+      "id": "sms-owner-emergency",
+      "name": "SMS Owner - Emergency",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_E164",
+        "to": "REPLACE_WITH_OWNER_E164",
+        "message": "={{ 'EMERGENCY CALL: ' + $('Parse Call Data').first().json.caller_name + ' (' + $('Parse Call Data').first().json.from_number + ') - ' + $('Parse Call Data').first().json.service_type + '. ' + $('Parse Call Data').first().json.summary }}"
+      },
+      "position": [
+        1320,
+        -100
+      ]
+    },
+    {
+      "id": "jobber-create-client",
+      "name": "Jobber Create Client",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getjobber.com/api/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-JOBBER-GRAPHQL-VERSION",
+              "value": "2026-09-25"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({query: \"mutation CreateClient($input: ClientCreateInput!) { clientCreate(input: $input) { client { id } userErrors { message } } }\", variables: {input:{firstName: $('Parse Call Data').first().json.caller_name.split(' ')[0], lastName: $('Parse Call Data').first().json.caller_name.split(' ').slice(1).join(' ') || 'Caller', phones:[{number:$('Parse Call Data').first().json.from_number, primary:true}]}}}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        1320,
+        220
+      ]
+    },
+    {
+      "id": "assert-jobber-client",
+      "name": "Assert Jobber Client",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n  const errors = [...(response.errors ?? []), ...(response.data?.clientCreate?.userErrors ?? [])];\n  if (errors.length || !response.data?.clientCreate?.client?.id) {\n    throw new Error(`Jobber clientCreate failed: ${JSON.stringify(errors)}`);\n  }\n  return [{ json: { client_id: response.data.clientCreate.client.id } }];"
+      },
+      "position": [
+        1540,
+        220
+      ]
+    },
+    {
+      "id": "jobber-create-request",
+      "name": "Jobber Create Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.getjobber.com/api/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-JOBBER-GRAPHQL-VERSION",
+              "value": "2026-09-25"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({query: \"mutation CreateRequest($input: RequestCreateInput!) { requestCreate(input: $input) { request { id } userErrors { message } } }\", variables: {input:{clientId: $json.client_id, title: ($('Parse Call Data').first().json.urgency === 'emergency' ? 'HIGH PRIORITY - ' : '') + $('Parse Call Data').first().json.service_type, instructions: ($('Parse Call Data').first().json.summary || 'Follow up with caller') + ' | Address: ' + ($('Parse Call Data').first().json.address || 'Not provided') + ' | Call ID: ' + $('Parse Call Data').first().json.call_id}}}) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "position": [
+        1760,
+        220
+      ]
+    },
+    {
+      "id": "assert-jobber-request",
+      "name": "Assert Jobber Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n  const errors = [...(response.errors ?? []), ...(response.data?.requestCreate?.userErrors ?? [])];\n  if (errors.length || !response.data?.requestCreate?.request?.id) {\n    throw new Error(`Jobber requestCreate failed: ${JSON.stringify(errors)}`);\n  }\n  return [{ json: {\n    client_id: $('Assert Jobber Client').first().json.client_id,\n    request_id: response.data.requestCreate.request.id,\n    urgency: $('Parse Call Data').first().json.urgency,\n  } }];"
+      },
+      "position": [
+        1980,
+        220
+      ]
+    },
+    {
+      "id": "created-lead-router",
+      "name": "Created Lead Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 2,
+        "output": "={{ $json.urgency === 'emergency' ? 0 : 1 }}",
+        "options": {}
+      },
+      "position": [
+        2200,
+        220
+      ]
+    },
+    {
+      "id": "log-emergency-supabase-",
+      "name": "Log Emergency (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "retell_call_logs",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_id }}"
+            },
+            {
+              "fieldId": "call_status",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_status }}"
+            },
+            {
+              "fieldId": "from_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.from_number }}"
+            },
+            {
+              "fieldId": "to_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.to_number }}"
+            },
+            {
+              "fieldId": "start_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.start_timestamp }}"
+            },
+            {
+              "fieldId": "end_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.end_timestamp }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Parse Call Data').first().json.summary }}"
+            },
+            {
+              "fieldId": "in_voicemail",
+              "fieldValue": "={{ $('Parse Call Data').first().json.in_voicemail }}"
+            },
+            {
+              "fieldId": "caller_name",
+              "fieldValue": "={{ $('Parse Call Data').first().json.caller_name }}"
+            },
+            {
+              "fieldId": "service_type",
+              "fieldValue": "={{ $('Parse Call Data').first().json.service_type }}"
+            },
+            {
+              "fieldId": "address",
+              "fieldValue": "={{ $('Parse Call Data').first().json.address }}"
+            },
+            {
+              "fieldId": "urgency",
+              "fieldValue": "={{ $('Parse Call Data').first().json.urgency }}"
+            },
+            {
+              "fieldId": "call_outcome",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_outcome }}"
+            },
+            {
+              "fieldId": "transcript",
+              "fieldValue": "={{ $('Parse Call Data').first().json.transcript }}"
+            },
+            {
+              "fieldId": "outcome",
+              "fieldValue": "emergency"
+            },
+            {
+              "fieldId": "jobber_client_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.client_id }}"
+            },
+            {
+              "fieldId": "jobber_request_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.request_id }}"
+            }
+          ]
+        }
+      },
+      "position": [
+        2420,
+        120
+      ]
+    },
+    {
+      "id": "log-qualified-supabase-",
+      "name": "Log Qualified (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "retell_call_logs",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_id }}"
+            },
+            {
+              "fieldId": "call_status",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_status }}"
+            },
+            {
+              "fieldId": "from_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.from_number }}"
+            },
+            {
+              "fieldId": "to_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.to_number }}"
+            },
+            {
+              "fieldId": "start_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.start_timestamp }}"
+            },
+            {
+              "fieldId": "end_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.end_timestamp }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Parse Call Data').first().json.summary }}"
+            },
+            {
+              "fieldId": "in_voicemail",
+              "fieldValue": "={{ $('Parse Call Data').first().json.in_voicemail }}"
+            },
+            {
+              "fieldId": "caller_name",
+              "fieldValue": "={{ $('Parse Call Data').first().json.caller_name }}"
+            },
+            {
+              "fieldId": "service_type",
+              "fieldValue": "={{ $('Parse Call Data').first().json.service_type }}"
+            },
+            {
+              "fieldId": "address",
+              "fieldValue": "={{ $('Parse Call Data').first().json.address }}"
+            },
+            {
+              "fieldId": "urgency",
+              "fieldValue": "={{ $('Parse Call Data').first().json.urgency }}"
+            },
+            {
+              "fieldId": "call_outcome",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_outcome }}"
+            },
+            {
+              "fieldId": "transcript",
+              "fieldValue": "={{ $('Parse Call Data').first().json.transcript }}"
+            },
+            {
+              "fieldId": "outcome",
+              "fieldValue": "qualified"
+            },
+            {
+              "fieldId": "jobber_client_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.client_id }}"
+            },
+            {
+              "fieldId": "jobber_request_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.request_id }}"
+            }
+          ]
+        }
+      },
+      "position": [
+        2420,
+        360
+      ]
+    },
+    {
+      "id": "sms-confirm-caller",
+      "name": "SMS Confirm Caller",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_E164",
+        "to": "={{ $('Parse Call Data').first().json.from_number }}",
+        "message": "={{ 'Thanks for calling. We received your request and someone will follow up shortly. No appointment has been confirmed.' }}"
+      },
+      "position": [
+        2640,
+        360
+      ]
+    },
+    {
+      "id": "sms-lead-summary-to-owner",
+      "name": "SMS Lead Summary to Owner",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_E164",
+        "to": "REPLACE_WITH_OWNER_E164",
+        "message": "={{ 'NEW LEAD: ' + $('Parse Call Data').first().json.caller_name + ' (' + $('Parse Call Data').first().json.from_number + ') - ' + $('Parse Call Data').first().json.service_type + '. ' + $('Parse Call Data').first().json.summary }}"
+      },
+      "position": [
+        2860,
+        360
+      ]
+    },
+    {
+      "id": "log-out-of-area-supabase-",
+      "name": "Log Out of Area (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "retell_call_logs",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_id }}"
+            },
+            {
+              "fieldId": "call_status",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_status }}"
+            },
+            {
+              "fieldId": "from_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.from_number }}"
+            },
+            {
+              "fieldId": "to_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.to_number }}"
+            },
+            {
+              "fieldId": "start_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.start_timestamp }}"
+            },
+            {
+              "fieldId": "end_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.end_timestamp }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Parse Call Data').first().json.summary }}"
+            },
+            {
+              "fieldId": "in_voicemail",
+              "fieldValue": "={{ $('Parse Call Data').first().json.in_voicemail }}"
+            },
+            {
+              "fieldId": "caller_name",
+              "fieldValue": "={{ $('Parse Call Data').first().json.caller_name }}"
+            },
+            {
+              "fieldId": "service_type",
+              "fieldValue": "={{ $('Parse Call Data').first().json.service_type }}"
+            },
+            {
+              "fieldId": "address",
+              "fieldValue": "={{ $('Parse Call Data').first().json.address }}"
+            },
+            {
+              "fieldId": "urgency",
+              "fieldValue": "={{ $('Parse Call Data').first().json.urgency }}"
+            },
+            {
+              "fieldId": "call_outcome",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_outcome }}"
+            },
+            {
+              "fieldId": "transcript",
+              "fieldValue": "={{ $('Parse Call Data').first().json.transcript }}"
+            },
+            {
+              "fieldId": "outcome",
+              "fieldValue": "out_of_area"
+            },
+            {
+              "fieldId": "jobber_client_id",
+              "fieldValue": ""
+            },
+            {
+              "fieldId": "jobber_request_id",
+              "fieldValue": ""
+            }
+          ]
+        }
+      },
+      "position": [
+        1320,
+        520
+      ]
+    },
+    {
+      "id": "log-needs-review-supabase-",
+      "name": "Log Needs Review (Supabase)",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "retell_call_logs",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "call_id",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_id }}"
+            },
+            {
+              "fieldId": "call_status",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_status }}"
+            },
+            {
+              "fieldId": "from_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.from_number }}"
+            },
+            {
+              "fieldId": "to_number",
+              "fieldValue": "={{ $('Parse Call Data').first().json.to_number }}"
+            },
+            {
+              "fieldId": "start_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.start_timestamp }}"
+            },
+            {
+              "fieldId": "end_timestamp",
+              "fieldValue": "={{ $('Parse Call Data').first().json.end_timestamp }}"
+            },
+            {
+              "fieldId": "summary",
+              "fieldValue": "={{ $('Parse Call Data').first().json.summary }}"
+            },
+            {
+              "fieldId": "in_voicemail",
+              "fieldValue": "={{ $('Parse Call Data').first().json.in_voicemail }}"
+            },
+            {
+              "fieldId": "caller_name",
+              "fieldValue": "={{ $('Parse Call Data').first().json.caller_name }}"
+            },
+            {
+              "fieldId": "service_type",
+              "fieldValue": "={{ $('Parse Call Data').first().json.service_type }}"
+            },
+            {
+              "fieldId": "address",
+              "fieldValue": "={{ $('Parse Call Data').first().json.address }}"
+            },
+            {
+              "fieldId": "urgency",
+              "fieldValue": "={{ $('Parse Call Data').first().json.urgency }}"
+            },
+            {
+              "fieldId": "call_outcome",
+              "fieldValue": "={{ $('Parse Call Data').first().json.call_outcome }}"
+            },
+            {
+              "fieldId": "transcript",
+              "fieldValue": "={{ $('Parse Call Data').first().json.transcript }}"
+            },
+            {
+              "fieldId": "outcome",
+              "fieldValue": "needs_review"
+            },
+            {
+              "fieldId": "jobber_client_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.client_id }}"
+            },
+            {
+              "fieldId": "jobber_request_id",
+              "fieldValue": "={{ $('Assert Jobber Request').first().json.request_id }}"
+            }
+          ]
+        }
+      },
+      "position": [
+        1320,
+        720
+      ]
+    },
+    {
+      "id": "sms-owner-review-needed",
+      "name": "SMS Owner - Review Needed",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "parameters": {
+        "resource": "sms",
+        "operation": "send",
+        "from": "REPLACE_WITH_TWILIO_E164",
+        "to": "REPLACE_WITH_OWNER_E164",
+        "message": "={{ 'REVIEW CALL: ' + $('Parse Call Data').first().json.from_number + '. ' + $('Parse Call Data').first().json.summary }}"
+      },
+      "position": [
+        1540,
+        720
+      ]
+    }
+  ],
+  "connections": {
+    "Retell Call End Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Call Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Call Data": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Check (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Check (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "Decide Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Urgency Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgency Router": {
+      "main": [
+        [
+          {
+            "node": "SMS Owner - Emergency",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Jobber Create Client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Jobber Create Client",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Out of Area (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Needs Review (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobber Create Client": {
+      "main": [
+        [
+          {
+            "node": "Assert Jobber Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assert Jobber Client": {
+      "main": [
+        [
+          {
+            "node": "Jobber Create Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jobber Create Request": {
+      "main": [
+        [
+          {
+            "node": "Assert Jobber Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assert Jobber Request": {
+      "main": [
+        [
+          {
+            "node": "Created Lead Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Created Lead Router": {
+      "main": [
+        [
+          {
+            "node": "Log Emergency (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Qualified (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Qualified (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "SMS Confirm Caller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Needs Review (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "SMS Owner - Review Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Confirm Caller": {
+      "main": [
+        [
+          {
+            "node": "SMS Lead Summary to Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": ""
+  },
+  "staticData": null
+}
